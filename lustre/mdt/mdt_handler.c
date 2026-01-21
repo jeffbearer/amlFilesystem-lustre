@@ -6575,6 +6575,32 @@ static int mdt_connect_internal(const struct lu_env *env,
 	 * uses it to calculate grant, and we want to save the client
 	 * version before it is overwritten by LUSTRE_VERSION_CODE. */
 	exp->exp_connect_data = *data;
+	
+	/* Log client version info if provided */
+	if (OCD_HAS_FLAG2(data, CLIENT_VERSION) && data->ocd_client_version) {
+		char distro[3] = {0};
+		char distro_ver[3] = {0};
+		char kern_rel[3] = {0};
+		
+		distro[0] = (data->ocd_client_version >> 56) & 0xFF;
+		distro[1] = (data->ocd_client_version >> 48) & 0xFF;
+		distro_ver[0] = (data->ocd_client_version >> 40) & 0xFF;
+		distro_ver[1] = (data->ocd_client_version >> 32) & 0xFF;
+		kern_rel[0] = (data->ocd_client_version >> 24) & 0xFF;
+		kern_rel[1] = (data->ocd_client_version >> 16) & 0xFF;
+		
+		if (distro[0] && distro_ver[0]) {
+			CDEBUG(D_INFO, "%s: client %s/%p distro=%c%c-%c%c kernel=%c%c\n",
+			       obd_name, exp->exp_client_uuid.uuid, exp,
+			       distro[0], distro[1], distro_ver[0], distro_ver[1],
+			       kern_rel[0], kern_rel[1]);
+		} else if (kern_rel[0]) {
+			CDEBUG(D_INFO, "%s: client %s/%p kernel=%c%c\n",
+			       obd_name, exp->exp_client_uuid.uuid, exp,
+			       kern_rel[0], kern_rel[1]);
+		}
+	}
+	
 	if (OCD_HAS_FLAG(data, GRANT))
 		tgt_grant_connect(env, exp, data, !reconnect);
 
