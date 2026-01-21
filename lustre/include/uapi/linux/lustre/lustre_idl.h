@@ -842,6 +842,7 @@ struct ptlrpc_body_v2 {
 #define OBD_CONNECT2_ATOMIC_OPEN_LOCK	  0x4000000ULL /* lock on first open */
 #define OBD_CONNECT2_ENCRYPT_NAME	  0x8000000ULL /* name encrypt */
 #define OBD_CONNECT2_ENCRYPT_FID2PATH	 0x40000000ULL /* fid2path enc file */
+#define OBD_CONNECT2_CLIENT_VERSION	 0x80000000ULL /* client version info */
 /* XXX README XXX README XXX README XXX README XXX README XXX README XXX
  * Please DO NOT add OBD_CONNECT flags before first ensuring that this value
  * is not in use by some other branch/patch.  Email adilger@whamcloud.com
@@ -978,7 +979,7 @@ struct obd_connect_data {
 	__u16 padding0;		 /* READ BELOW! also fix lustre_swab_connect */
 	__u32 padding1;		 /* READ BELOW! also fix lustre_swab_connect */
 	__u64 ocd_connect_flags2;/* OBD_CONNECT2_* per above */
-	__u64 padding3;		 /* READ BELOW! also fix lustre_swab_connect */
+	__u64 ocd_client_version;/* Client kernel/distro version string offset */
 	__u64 padding4;		 /* READ BELOW! also fix lustre_swab_connect */
 	__u64 padding5;		 /* READ BELOW! also fix lustre_swab_connect */
 	__u64 padding6;		 /* READ BELOW! also fix lustre_swab_connect */
