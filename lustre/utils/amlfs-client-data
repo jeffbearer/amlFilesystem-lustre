@@ -1,0 +1,97 @@
+#!/bin/sh
+# Copyright (c) Microsoft Corporation. All rights reserved.
+#
+# amlfs-client-data - Generate AMLFS client telemetry data for Lustre mount.
+#
+# Outputs a 64-bit integer encoding the client's distribution and kernel
+# version information. Intended for use with the Lustre client_data_cmd=
+# mount option (see mount.lustre(8)).
+#
+# Encoding format (version 0):
+#   [63:60]  Format version  (4 bits)  - 0
+#   [59:56]  Distro ID       (4 bits)  - 0=unknown, 1=Ubuntu, 2=RHEL, 3=AzureLinux
+#   [55:48]  Distro Version  (8 bits)  - major version (e.g. 22 for Ubuntu 22.04)
+#   [47:32]  Kernel Maj.Min  (16 bits) - major<<8 | minor
+#   [31:16]  Kernel Patch    (16 bits)
+#   [15:0]   Kernel ABI      (16 bits) - e.g. 1027 from 5.15.0-1027-azure
+#
+# Usage:
+#   mount -t lustre -o client_data_cmd=/usr/sbin/amlfs-client-data ...
+#   Or in fstab:
+#     <mgs>:/<fsname>  /mnt/lustre  lustre  client_data_cmd=/usr/sbin/amlfs-client-data  0 0
+
+set -e
+
+# --- Detect distribution ---
+DISTRO_ID=0
+DISTRO_VER=0
+
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case "$ID" in
+        ubuntu)
+            DISTRO_ID=1
+            DISTRO_VER="${VERSION_ID%%.*}"
+            ;;
+        rhel|centos|rocky|almalinux)
+            DISTRO_ID=2
+            DISTRO_VER="${VERSION_ID%%.*}"
+            ;;
+        mariner|azurelinux)
+            DISTRO_ID=3
+            DISTRO_VER="${VERSION_ID%%.*}"
+            ;;
+    esac
+fi
+
+# Clamp to fit field widths
+DISTRO_ID=$((DISTRO_ID & 0xF))
+DISTRO_VER=$((DISTRO_VER & 0xFF))
+
+# --- Parse kernel version ---
+KREL=$(uname -r)
+
+KMAJ=0
+KMIN=0
+KPAT=0
+KABI=0
+
+# Parse "M.m.p-ABI-flavor" (e.g., "5.15.0-1110-azure")
+# First split on '-' to separate version from ABI/flavor
+KVER_PART="${KREL%%-*}"         # "5.15.0"
+KABI_PART="${KREL#*-}"          # "1110-azure" or same as KREL if no dash
+
+# Parse M.m.p
+IFS='.' read -r KMAJ KMIN KPAT _ <<EOF
+$KVER_PART
+EOF
+
+# Parse ABI (first numeric field after the dash)
+if [ "$KABI_PART" != "$KREL" ]; then
+    KABI="${KABI_PART%%-*}"     # "1110" from "1110-azure"
+    # Ensure it's numeric; non-numeric means no ABI
+    case "$KABI" in
+        *[!0-9]*) KABI=0 ;;
+    esac
+fi
+
+# Ensure numeric
+KMAJ=$((KMAJ + 0))
+KMIN=$((KMIN + 0))
+KPAT=$((KPAT + 0))
+KABI=$((KABI + 0))
+
+# Clamp to field widths
+KMM=$(( ((KMAJ & 0xFF) << 8) | (KMIN & 0xFF) ))
+KPAT=$((KPAT & 0xFFFF))
+KABI=$((KABI & 0xFFFF))
+
+# --- Encode ---
+# Format version 0 in bits [63:60]
+FMT_VER=0
+
+# Use printf for portable 64-bit arithmetic (shell arithmetic may be 32-bit)
+# Result = (FMT_VER << 60) | (DISTRO_ID << 56) | (DISTRO_VER << 48) |
+#          (KMM << 32) | (KPAT << 16) | KABI
+printf "0x%01x%01x%02x%04x%04x%04x\n" \
+    "$FMT_VER" "$DISTRO_ID" "$DISTRO_VER" "$KMM" "$KPAT" "$KABI"

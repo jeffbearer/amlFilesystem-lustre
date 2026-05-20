@@ -33,7 +33,7 @@ rootsbin_PROGRAMS += mount.lustre_tgt
 endif
 bin_SCRIPTS   = llstat llobdstat plot-llstat
 bin_PROGRAMS  = lfs
-sbin_SCRIPTS  = ldlm_debug_upcall
+sbin_SCRIPTS  = ldlm_debug_upcall amlfs-client-data
 sbin_PROGRAMS = lctl l_getidentity llverfs lustre_rsync ll_decode_linkea \
 		llsom_sync l_foreign_symlink
 
@@ -253,7 +253,7 @@ wiretest_SOURCES = wiretest.c
 
 endif # UTILS
 
-EXTRA_DIST = llstat llobdstat plot-llstat ldlm_debug_upcall liblustreapi.map
+EXTRA_DIST = llstat llobdstat plot-llstat ldlm_debug_upcall amlfs-client-data liblustreapi.map
 
 # NOTE: this should only be run on i386.
 newwiretest: wirehdr.c wirecheck

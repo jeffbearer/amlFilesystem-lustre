@@ -625,6 +625,11 @@ fi
     make install DESTDIR=$RPM_BUILD_ROOT
 %endif
 
+# Install AMLFS client telemetry script (Feature 37365900).
+# This is an AMLFS-specific script used with the Lustre client_data_cmd= mount
+# option to encode client distribution/kernel info for server-side telemetry.
+install -D -m 0755 lustre/utils/amlfs-client-data $RPM_BUILD_ROOT%{_sbindir}/amlfs-client-data
+
 %if %{with lustre_modules}
 # RHEL's kernel_module_path macro expects that all the modules
 # in a kmod package will be in modules_fs_path/<sub packagename>
