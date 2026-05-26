@@ -347,6 +347,8 @@ int parse_options(struct mount_opts *mop, char *orig_options,
 			}
 			strncpy(mop->mo_client_data_cmd, val + 1,
 				sizeof(mop->mo_client_data_cmd) - 1);
+		} else if (strncmp(arg, "noclient_data", 13) == 0) {
+			mop->mo_noclient_data = 1;
 		} else if (strncmp(arg, "nosvc", 5) == 0) {
 			mop->mo_nosvc = 1;
 			rc = append_option(options, options_len, opt, NULL);
@@ -919,8 +921,24 @@ int main(int argc, char *const argv[])
 		goto out_options;
 	}
 
-	/* If client_data_cmd was specified but client_data= was not provided
-	 * directly, run the command and inject the result as client_data=.
+	/* If no client_data_cmd= was specified explicitly and noclient_data
+	 * was not set, auto-detect a well-known script path.  This allows
+	 * the DKMS package to enable telemetry simply by installing the
+	 * script — no mount option changes required.
+	 */
+	if (mop.mo_client_data_cmd[0] == '\0' && !mop.mo_noclient_data &&
+	    strstr(options, "client_data=") == NULL) {
+		static const char *default_cmd = "/usr/sbin/amlfs-client-data";
+
+		if (access(default_cmd, X_OK) == 0) {
+			strncpy(mop.mo_client_data_cmd, default_cmd,
+				sizeof(mop.mo_client_data_cmd) - 1);
+		}
+	}
+
+	/* If client_data_cmd is set (explicitly or auto-detected) and
+	 * client_data= was not provided directly, run the command and
+	 * inject the result as client_data=.
 	 */
 	if (mop.mo_client_data_cmd[0] != '\0' &&
 	    strstr(options, "client_data=") == NULL) {

@@ -120,6 +120,7 @@ struct mount_opts {
 	int	 mo_md_stripe_cache_size;
 	int	 mo_nosvc;
 	int	 mo_max_sectors_kb;
+	int	 mo_noclient_data;
 	char	 mo_client_data_cmd[PATH_MAX]; /* client_data_cmd= script */
 };
 
