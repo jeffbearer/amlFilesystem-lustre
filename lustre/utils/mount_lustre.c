@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
@@ -939,54 +940,91 @@ int main(int argc, char *const argv[])
 	/* If client_data_cmd is set (explicitly or auto-detected) and
 	 * client_data= was not provided directly, run the command and
 	 * inject the result as client_data=.
+	 * Use fork/execve instead of popen to avoid shell injection.
 	 */
 	if (mop.mo_client_data_cmd[0] != '\0' &&
 	    strstr(options, "client_data=") == NULL) {
-		FILE *fp;
-		char buf[32];
-		unsigned long long val;
-		char *end;
+		char buf[64] = { 0 };
+		unsigned long long val = 0;
+		int pfd[2];
+		pid_t pid;
 
-		fp = popen(mop.mo_client_data_cmd, "r");
-		if (fp == NULL) {
+		if (pipe(pfd) == -1) {
 			fprintf(stderr,
-				"%s: warning: failed to run client_data_cmd '%s': %s\n",
-				progname, mop.mo_client_data_cmd,
-				strerror(errno));
-		} else {
-			if (fgets(buf, sizeof(buf), fp) != NULL) {
-				/* Strip trailing whitespace */
-				end = buf + strlen(buf) - 1;
-				while (end >= buf && (*end == '\n' ||
-				       *end == '\r' || *end == ' '))
-					*end-- = '\0';
+				"%s: warning: pipe() failed: %s\n",
+				progname, strerror(errno));
+			goto skip_client_data;
+		}
 
-				errno = 0;
-				val = strtoull(buf, &end, 0);
-				if (errno == 0 && *end == '\0' && end != buf) {
-					char opt[64];
+		pid = fork();
+		if (pid == -1) {
+			fprintf(stderr,
+				"%s: warning: fork() failed: %s\n",
+				progname, strerror(errno));
+			close(pfd[0]);
+			close(pfd[1]);
+			goto skip_client_data;
+		}
 
-					snprintf(opt, sizeof(opt),
-						 "client_data=0x%llx", val);
-					rc = append_option(options, maxopt_len,
-							   opt, NULL);
-					if (rc != 0) {
-						pclose(fp);
-						goto out_options;
-					}
-				} else {
+		if (pid == 0) {
+			/* child: redirect stdout to pipe, exec */
+			close(pfd[0]);
+			dup2(pfd[1], STDOUT_FILENO);
+			close(pfd[1]);
+			execl(mop.mo_client_data_cmd,
+			      mop.mo_client_data_cmd, NULL);
+			_exit(127);
+		}
+
+		/* parent: read output from child */
+		close(pfd[1]);
+		{
+			ssize_t n = read(pfd[0], buf, sizeof(buf) - 1);
+
+			if (n > 0) {
+				char *end;
+				size_t len;
+
+				buf[n] = '\0';
+				len = strlen(buf);
+				while (len > 0 &&
+				       (buf[len - 1] == '\n' ||
+					buf[len - 1] == '\r' ||
+					buf[len - 1] == ' '))
+					buf[--len] = '\0';
+
+				if (buf[0] == '-') {
 					fprintf(stderr,
-						"%s: warning: client_data_cmd output is not a valid 64-bit value: '%s'\n",
+						"%s: warning: client_data_cmd output '%s' is not a valid 64-bit value\n",
 						progname, buf);
+				} else {
+					errno = 0;
+					val = strtoull(buf, &end, 0);
+					if (errno != 0 || *end != '\0' ||
+					    end == buf) {
+						fprintf(stderr,
+							"%s: warning: client_data_cmd output '%s' is not a valid 64-bit value\n",
+							progname, buf);
+						val = 0;
+					}
 				}
-			} else {
-				fprintf(stderr,
-					"%s: warning: client_data_cmd produced no output\n",
-					progname);
 			}
-			pclose(fp);
+		}
+		close(pfd[0]);
+		waitpid(pid, NULL, 0);
+
+		if (val) {
+			char opt[64];
+
+			snprintf(opt, sizeof(opt),
+				 "client_data=0x%llx", val);
+			rc = append_option(options, maxopt_len,
+					   opt, NULL);
+			if (rc != 0)
+				goto out_options;
 		}
 	}
+skip_client_data:
 
 	if (!mop.mo_force) {
 		rc = check_mtab_entry(mop.mo_usource, mop.mo_source,
